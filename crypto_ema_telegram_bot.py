@@ -5,8 +5,8 @@ from datetime import datetime
 from flask import Flask
 
 # ============ TELEGRAM CONFIG ============
-TELEGRAM_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-CHAT_ID = "YOUR_CHAT_ID"
+TELEGRAM_BOT_TOKEN = "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0"
+TELEGRAM_CHAT_ID = "8282016712"  # ví dụ: 8282016712
 
 # ============ FLASK KEEPALIVE ============
 app = Flask(__name__)
@@ -72,3 +72,4 @@ if __name__ == "__main__":
     import threading
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     main()
+
