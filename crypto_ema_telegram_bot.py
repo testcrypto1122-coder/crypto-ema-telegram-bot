@@ -16,17 +16,44 @@ SETTINGS = {
 # Hàm lấy danh sách coin USDT
 # =============================
 def get_all_usdt_symbols():
-    url = "https://api.binance.com/api/v3/exchangeInfo"
-    data = requests.get(url, timeout=10).json()
-    symbols = [
-        s["symbol"]
-        for s in data["symbols"]
-        if s["symbol"].endswith("USDT")
-        and s["status"] == "TRADING"
-        and not any(x in s["symbol"] for x in ["UPUSDT", "DOWNUSDT", "BULLUSDT", "BEARUSDT"])
-    ]
-    print(f"Tìm thấy {len(symbols)} cặp USDT đang giao dịch.")
-    return symbols
+    """Lấy danh sách các cặp USDT có khối lượng giao dịch > 1 triệu USDT (tránh coin rác)."""
+    try:
+        # 1️⃣ Lấy thông tin sàn (danh sách cặp)
+        url_info = "https://api.binance.com/api/v3/exchangeInfo"
+        data_info = requests.get(url_info, timeout=10).json()
+
+        if "symbols" not in data_info:
+            print("⚠️ Không tìm thấy trường 'symbols' trong exchangeInfo!")
+            return ["BTCUSDT", "ETHUSDT"]
+
+        # 2️⃣ Lọc các cặp USDT hợp lệ
+        usdt_symbols = [
+            s["symbol"]
+            for s in data_info["symbols"]
+            if s["symbol"].endswith("USDT")
+            and s["status"] == "TRADING"
+            and not s["symbol"].endswith("BUSDUSDT")
+            and not s["symbol"].endswith("USDCUSDT")
+        ]
+
+        # 3️⃣ Lấy dữ liệu 24h để lọc volume
+        url_ticker = "https://api.binance.com/api/v3/ticker/24hr"
+        data_ticker = requests.get(url_ticker, timeout=10).json()
+
+        filtered_symbols = []
+        for t in data_ticker:
+            if t["symbol"] in usdt_symbols:
+                vol = float(t["quoteVolume"])
+                if vol >= 1_000_000:  # Chỉ giữ coin có volume > 1 triệu USDT
+                    filtered_symbols.append(t["symbol"])
+
+        print(f"✅ Lấy được {len(filtered_symbols)} cặp USDT có volume > 1M từ Binance")
+        return filtered_symbols if filtered_symbols else ["BTCUSDT", "ETHUSDT"]
+
+    except Exception as e:
+        print(f"❌ Lỗi khi lấy danh sách coin: {e}")
+        return ["BTCUSDT", "ETHUSDT"]
+
 
 # =============================
 # Lấy dữ liệu nến
@@ -107,3 +134,4 @@ if __name__ == "__main__":
     time.sleep(3)
     print("Starting EMA crossover bot...")
     main()
+
