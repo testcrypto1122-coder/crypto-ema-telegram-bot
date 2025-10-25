@@ -34,7 +34,7 @@ async def send_telegram_message(session, message: str):
 # === Lấy dữ liệu nến từ Binance với retry ===
 async def get_binance_data(session, symbol: str, interval=INTERVAL, limit=100):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
-    for attempt in range(3):  # retry 3 lần nếu fail
+    for attempt in range(3):
         try:
             async with session.get(url, timeout=10) as resp:
                 data = await resp.json()
