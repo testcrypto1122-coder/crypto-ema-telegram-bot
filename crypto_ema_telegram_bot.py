@@ -13,7 +13,7 @@ CHAT_ID = os.getenv("CHAT_ID", "8282016712")
 INTERVAL = "5m"
 EMA_SHORT = 9
 EMA_LONG = 21
-CONCURRENT_REQUESTS = 15  # số coin request cùng lúc
+CONCURRENT_REQUESTS = 10  # số coin request cùng lúc trên Render
 SLEEP_BETWEEN_ROUNDS = 60  # giây nghỉ giữa các vòng quét
 
 app = Flask(__name__)
@@ -78,7 +78,7 @@ async def scan_coin(session, symbol, semaphore):
 async def main_loop():
     semaphore = asyncio.Semaphore(CONCURRENT_REQUESTS)
     async with aiohttp.ClientSession() as session:
-        await send_telegram_message(session, "🚀 Bot EMA 9/21 đã khởi động!")
+        await send_telegram_message(session, "🚀 Bot EMA 9/21 đã khởi động và bắt đầu quét coin!")
 
         while True:
             try:
@@ -100,6 +100,7 @@ async def main_loop():
                 summary = f"📊 Tổng kết vòng quét: 🟢 MUA {total_buy} | 🔴 BÁN {total_sell} | ⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
                 print(summary)
                 await send_telegram_message(session, summary)
+                await send_telegram_message(session, "✅ Đã quét xong vòng này.")
 
                 print(f"⏳ Hoàn tất vòng quét, nghỉ {SLEEP_BETWEEN_ROUNDS} giây...\n")
                 await asyncio.sleep(SLEEP_BETWEEN_ROUNDS)
