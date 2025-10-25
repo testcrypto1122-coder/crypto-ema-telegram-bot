@@ -7,8 +7,8 @@ import threading
 import os
 
 # === Cấu hình Telegram ===
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID", "YOUR_CHAT_ID")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0")
+CHAT_ID = os.getenv("CHAT_ID", "8282016712")
 
 # === Cấu hình EMA ===
 INTERVAL = "15m"
@@ -129,3 +129,4 @@ def home():
 if __name__ == '__main__':
     threading.Thread(target=main, daemon=True).start()
     app.run(host='0.0.0.0', port=10000)
+
