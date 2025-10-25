@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 import time
 import threading
-from Flask import Flask
+from flask import Flask
 
 # =============================
 # 🔧 CẤU HÌNH
@@ -104,7 +104,7 @@ app = Flask(__name__)
 def home():
     return "🚀 EMA Bot is running on Render Free 24/7!"
 
-def run_Flask():
+def run_flask():
     app.run(host="0.0.0.0", port=10000)
 
 # =============================
@@ -114,5 +114,6 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     send_telegram_message("✅ Bot EMA 9/21 đã khởi động trên Render!")
     main()
+
 
 
