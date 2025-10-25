@@ -11,7 +11,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCj
 CHAT_ID = os.getenv("CHAT_ID", "8282016712")
 
 # === Cấu hình EMA ===
-INTERVAL = "15m"
+INTERVAL = "5m"
 EMA_SHORT = 9
 EMA_LONG = 21
 VOLUME_THRESHOLD = 500_000  # Volume tối thiểu để quét
@@ -129,4 +129,5 @@ def home():
 if __name__ == '__main__':
     threading.Thread(target=main, daemon=True).start()
     app.run(host='0.0.0.0', port=10000)
+
 
