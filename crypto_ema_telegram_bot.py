@@ -17,7 +17,7 @@ def home():
 
 # ============ HÀM GỬI TELEGRAM ============
 def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message}
     try:
         requests.post(url, json=payload, timeout=10)
@@ -72,4 +72,5 @@ if __name__ == "__main__":
     import threading
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
     main()
+
 
