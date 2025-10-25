@@ -14,8 +14,7 @@ CHAT_ID = os.getenv("CHAT_ID", "8282016712")
 INTERVAL = "5m"
 EMA_SHORT = 9
 EMA_LONG = 21
-VOLUME_THRESHOLD = 500_000  # Volume tối thiểu để quét
-LIMIT_COINS = 100            # Giới hạn số coin
+LIMIT_COINS = 100  # Giới hạn số coin quét
 
 app = Flask(__name__)
 
@@ -80,34 +79,27 @@ def main():
 
     while True:
         try:
-            # Lấy danh sách coin khả dụng
+            # Lấy danh sách coin USDT hợp lệ
             exchange_info = requests.get("https://api.binance.com/api/v3/exchangeInfo").json()
             all_coins = [
                 s['symbol'] for s in exchange_info['symbols']
                 if s['quoteAsset'] == 'USDT' and not any(x in s['symbol'] for x in ['UP', 'DOWN', 'BULL', 'BEAR'])
-            ]
-
-            # Lọc theo volume
-            tickers = requests.get("https://api.binance.com/api/v3/ticker/24hr").json()
-            high_volume_coins = [
-                t['symbol'] for t in tickers
-                if t['symbol'] in all_coins and float(t.get('quoteVolume', 0)) > VOLUME_THRESHOLD
             ][:LIMIT_COINS]
 
-            print(f"\n🔍 Quét {len(high_volume_coins)} coin có volume > {VOLUME_THRESHOLD:,} USDT... ({datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')})")
+            print(f"\n🔍 Quét {len(all_coins)} coin... ({datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')})")
 
             buy_signals, sell_signals = 0, 0
 
-            for symbol in high_volume_coins:
+            for symbol in all_coins:
                 result = check_ema_crossover(symbol)
                 if result == "BUY":
                     buy_signals += 1
                 elif result == "SELL":
                     sell_signals += 1
-                time.sleep(0.5)
+                time.sleep(0.5)  # delay mỗi coin
 
             summary = f"📊 **Tổng kết vòng quét**\n" \
-                      f"🪙 Tổng coin quét: {len(high_volume_coins)}\n" \
+                      f"🪙 Tổng coin quét: {len(all_coins)}\n" \
                       f"🟢 MUA: {buy_signals} | 🔴 BÁN: {sell_signals}\n" \
                       f"⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
 
@@ -129,5 +121,3 @@ def home():
 if __name__ == '__main__':
     threading.Thread(target=main, daemon=True).start()
     app.run(host='0.0.0.0', port=10000)
-
-
