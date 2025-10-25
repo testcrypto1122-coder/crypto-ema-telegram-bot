@@ -45,7 +45,7 @@ def get_binance_data(symbol: str, interval=INTERVAL, limit=100):
         print(f"⚠️ Lỗi lấy dữ liệu {symbol}: {e}")
         return None
 
-# === Kiểm tra giao cắt EMA ===
+# === Kiểm tra giao cắt EMA với debug ===
 def check_ema_crossover(symbol: str):
     df = get_binance_data(symbol)
     if df is None or len(df) < EMA_LONG:
@@ -56,6 +56,9 @@ def check_ema_crossover(symbol: str):
 
     prev_short, prev_long = df["ema_short"].iloc[-2], df["ema_long"].iloc[-2]
     last_short, last_long = df["ema_short"].iloc[-1], df["ema_long"].iloc[-1]
+
+    # In debug EMA từng coin
+    print(f"{symbol} | EMA9: {last_short:.4f}, EMA21: {last_long:.4f} | Prev EMA9: {prev_short:.4f}, Prev EMA21: {prev_long:.4f}")
 
     # Tín hiệu MUA
     if prev_short < prev_long and last_short > last_long:
@@ -73,13 +76,13 @@ def check_ema_crossover(symbol: str):
 
     return None
 
-# === Hàm chính quét coin ===
+# === Hàm quét coin chính với debug ===
 def main():
     send_telegram_message("🚀 Bot EMA 9/21 đã khởi động và bắt đầu quét coin!")
 
     while True:
         try:
-            # Lấy danh sách coin USDT hợp lệ
+            # Lấy danh sách coin USDT, bỏ coin “rác”
             exchange_info = requests.get("https://api.binance.com/api/v3/exchangeInfo").json()
             all_coins = [
                 s['symbol'] for s in exchange_info['symbols']
@@ -96,7 +99,7 @@ def main():
                     buy_signals += 1
                 elif result == "SELL":
                     sell_signals += 1
-                time.sleep(0.5)  # delay mỗi coin
+                time.sleep(0.5)  # tránh bị throttling API
 
             summary = f"📊 **Tổng kết vòng quét**\n" \
                       f"🪙 Tổng coin quét: {len(all_coins)}\n" \
