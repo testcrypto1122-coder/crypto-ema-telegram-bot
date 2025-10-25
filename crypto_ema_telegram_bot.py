@@ -1,137 +1,116 @@
 import requests
 import pandas as pd
 import time
-from datetime import datetime
+import threading
+from flask import Flask
 
 # =============================
-# Cấu hình
+# 🔧 CẤU HÌNH
 # =============================
-SETTINGS = {
-    "INTERVAL": "15m",
-    "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
-    "TELEGRAM_CHAT_ID": "8282016712",
-}
+TELEGRAM_BOT_TOKEN = "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0"
+TELEGRAM_CHAT_ID = "8282016712"  # ví dụ: 8282016712
+INTERVAL = "15m"  # khung thời gian
+EMA_FAST = 9
+EMA_SLOW = 21
+SLEEP_TIME = 60  # mỗi 1 phút cập nhật 1 lần
 
 # =============================
-# Hàm lấy danh sách coin USDT
+# 📡 HÀM GỬI TIN NHẮN TELEGRAM
+# =============================
+def send_telegram_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        r = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text})
+        r.raise_for_status()
+        print(f"✅ Telegram: {text}")
+    except Exception as e:
+        print(f"❌ Lỗi gửi telegram: {e}")
+
+# =============================
+# 📊 LẤY DANH SÁCH COIN CÓ VOLUME > 1M
 # =============================
 def get_all_usdt_symbols():
-    """Lấy danh sách các cặp USDT có khối lượng giao dịch > 1 triệu USDT (tránh coin rác)."""
     try:
-        # 1️⃣ Lấy thông tin sàn (danh sách cặp)
-        url_info = "https://api.binance.com/api/v3/exchangeInfo"
-        data_info = requests.get(url_info, timeout=10).json()
+        info = requests.get("https://api.binance.com/api/v3/exchangeInfo", timeout=10).json()
+        tickers = requests.get("https://api.binance.com/api/v3/ticker/24hr", timeout=10).json()
 
-        if "symbols" not in data_info:
-            print("⚠️ Không tìm thấy trường 'symbols' trong exchangeInfo!")
+        if "symbols" not in info:
+            print("⚠️ Không tìm thấy 'symbols' trong exchangeInfo!")
             return ["BTCUSDT", "ETHUSDT"]
 
-        # 2️⃣ Lọc các cặp USDT hợp lệ
         usdt_symbols = [
             s["symbol"]
-            for s in data_info["symbols"]
+            for s in info["symbols"]
             if s["symbol"].endswith("USDT")
             and s["status"] == "TRADING"
             and not s["symbol"].endswith("BUSDUSDT")
             and not s["symbol"].endswith("USDCUSDT")
         ]
 
-        # 3️⃣ Lấy dữ liệu 24h để lọc volume
-        url_ticker = "https://api.binance.com/api/v3/ticker/24hr"
-        data_ticker = requests.get(url_ticker, timeout=10).json()
+        filtered = []
+        for t in tickers:
+            if t["symbol"] in usdt_symbols and float(t["quoteVolume"]) > 1_000_000:
+                filtered.append(t["symbol"])
 
-        filtered_symbols = []
-        for t in data_ticker:
-            if t["symbol"] in usdt_symbols:
-                vol = float(t["quoteVolume"])
-                if vol >= 1_000_000:  # Chỉ giữ coin có volume > 1 triệu USDT
-                    filtered_symbols.append(t["symbol"])
-
-        print(f"✅ Lấy được {len(filtered_symbols)} cặp USDT có volume > 1M từ Binance")
-        return filtered_symbols if filtered_symbols else ["BTCUSDT", "ETHUSDT"]
+        print(f"✅ Lấy được {len(filtered)} cặp USDT có volume > 1M")
+        return filtered or ["BTCUSDT", "ETHUSDT"]
 
     except Exception as e:
-        print(f"❌ Lỗi khi lấy danh sách coin: {e}")
+        print(f"❌ Lỗi lấy danh sách coin: {e}")
         return ["BTCUSDT", "ETHUSDT"]
 
-
 # =============================
-# Lấy dữ liệu nến
+# 📈 LẤY DỮ LIỆU GIÁ & TÍNH EMA
 # =============================
-def get_klines(symbol, interval="15m", limit=100):
-    url = f"https://api.binance.com/api/v3/klines"
-    params = {"symbol": symbol, "interval": interval, "limit": limit}
-    data = requests.get(url, params=params, timeout=10).json()
-    df = pd.DataFrame(data, columns=[
-        "time", "open", "high", "low", "close", "volume",
-        "close_time", "qav", "trades", "tbbav", "tbqav", "ignore"
-    ])
-    df["close"] = df["close"].astype(float)
-    return df
-
-# =============================
-# Gửi tin nhắn Telegram
-# =============================
-def send_telegram_message(token, chat_id, text):
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
+def get_ema_signal(symbol):
     try:
-        requests.post(url, data=payload, timeout=10)
-    except Exception as e:
-        print("Lỗi gửi Telegram:", e)
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={INTERVAL}&limit=100"
+        data = requests.get(url, timeout=10).json()
+        closes = [float(x[4]) for x in data]
 
-# =============================
-# Logic tín hiệu EMA
-# =============================
-def check_ema_cross(symbol, interval="15m"):
-    try:
-        df = get_klines(symbol, interval)
-        df["ema9"] = df["close"].ewm(span=9).mean()
-        df["ema21"] = df["close"].ewm(span=21).mean()
+        df = pd.DataFrame(closes, columns=["close"])
+        df["ema_fast"] = df["close"].ewm(span=EMA_FAST, adjust=False).mean()
+        df["ema_slow"] = df["close"].ewm(span=EMA_SLOW, adjust=False).mean()
 
-        prev_ema9, prev_ema21 = df["ema9"].iloc[-2], df["ema21"].iloc[-2]
-        last_ema9, last_ema21 = df["ema9"].iloc[-1], df["ema21"].iloc[-1]
-
-        if prev_ema9 < prev_ema21 and last_ema9 > last_ema21:
+        if df["ema_fast"].iloc[-2] < df["ema_slow"].iloc[-2] and df["ema_fast"].iloc[-1] > df["ema_slow"].iloc[-1]:
             return "BUY"
-        elif prev_ema9 > prev_ema21 and last_ema9 < last_ema21:
+        elif df["ema_fast"].iloc[-2] > df["ema_slow"].iloc[-2] and df["ema_fast"].iloc[-1] < df["ema_slow"].iloc[-1]:
             return "SELL"
-    except Exception as e:
-        print(f"Lỗi {symbol}: {e}")
-    return None
+        else:
+            return None
+    except Exception:
+        return None
 
 # =============================
-# Main loop
+# 🔁 HÀM CHÍNH
 # =============================
 def main():
     symbols = get_all_usdt_symbols()
-    send_telegram_message(SETTINGS["TELEGRAM_BOT_TOKEN"], SETTINGS["TELEGRAM_CHAT_ID"],
-                          f"🚀 Bot EMA khởi động thành công — theo dõi {len(symbols)} coin USDT (khung {SETTINGS['INTERVAL']})")
+    print(f"📊 Đang theo dõi {len(symbols)} cặp coin...")
 
     while True:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Đang quét tín hiệu...")
         for sym in symbols:
-            signal = check_ema_cross(sym, SETTINGS["INTERVAL"])
+            signal = get_ema_signal(sym)
             if signal:
-                msg = f"📊 {sym} | EMA9/21 ({SETTINGS['INTERVAL']}) ➜ {signal}"
-                print(msg)
-                send_telegram_message(SETTINGS["TELEGRAM_BOT_TOKEN"], SETTINGS["TELEGRAM_CHAT_ID"], msg)
-            time.sleep(0.3)
-        print("Hoàn tất chu kỳ. Nghỉ 1 phút...\n")
-        time.sleep(60)
+                send_telegram_message(f"{signal} signal on {sym} ({INTERVAL})")
+        time.sleep(SLEEP_TIME)
 
 # =============================
-# Chạy thử
+# 🌐 FAKE FLASK SERVER (Render yêu cầu cổng)
+# =============================
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "🚀 EMA Bot is running on Render Free 24/7!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=10000)
+
+# =============================
+# ▶️ KHỞI CHẠY BOT
 # =============================
 if __name__ == "__main__":
-    print("Testing Telegram connection...")
-    send_telegram_message(
-        SETTINGS["TELEGRAM_BOT_TOKEN"],
-        SETTINGS["TELEGRAM_CHAT_ID"],
-        "✅ Test message: Bot kết nối thành công với Telegram!"
-    )
-    print("✅ Đã gửi tin nhắn test, kiểm tra Telegram nhé!")
-    time.sleep(3)
-    print("Starting EMA crossover bot...")
+    threading.Thread(target=run_flask, daemon=True).start()
+    send_telegram_message("✅ Bot EMA 9/21 đã khởi động trên Render!")
     main()
-
