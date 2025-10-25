@@ -3,7 +3,6 @@ import asyncio
 import pandas as pd
 from datetime import datetime, timezone
 from flask import Flask
-import threading
 import os
 
 # === Cấu hình Telegram ===
@@ -14,14 +13,14 @@ CHAT_ID = os.getenv("CHAT_ID", "8282016712")
 INTERVAL = "5m"
 EMA_SHORT = 9
 EMA_LONG = 21
-LIMIT_COINS = 100
+LIMIT_COINS = 100  # Giới hạn số coin để quét
 
 app = Flask(__name__)
 
-# === Gửi tin nhắn Telegram ===
+# === Gửi tin nhắn Telegram async ===
 async def send_telegram_message(session, message: str):
     if not BOT_TOKEN or not CHAT_ID:
-        print("⚠️ Thiếu BOT_TOKEN hoặc CHAT_ID.")
+        print("⚠️ Thiếu BOT_TOKEN hoặc CHAT_ID")
         return
     try:
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -31,7 +30,7 @@ async def send_telegram_message(session, message: str):
     except Exception as e:
         print(f"❌ Lỗi gửi Telegram: {e}")
 
-# === Lấy dữ liệu nến từ Binance ===
+# === Lấy dữ liệu nến từ Binance async ===
 async def get_binance_data(session, symbol: str, interval=INTERVAL, limit=100):
     try:
         url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}"
@@ -59,33 +58,30 @@ async def check_ema_crossover(session, symbol: str):
     prev_short, prev_long = df["ema_short"].iloc[-2], df["ema_long"].iloc[-2]
     last_short, last_long = df["ema_short"].iloc[-1], df["ema_long"].iloc[-1]
 
+    # Tín hiệu MUA
     if prev_short < prev_long and last_short > last_long:
         msg = f"🟢 {symbol} — EMA9 cắt lên EMA21 → **Tín hiệu MUA**"
         print(msg)
         await send_telegram_message(session, msg)
         return "BUY"
+
+    # Tín hiệu BÁN
     elif prev_short > prev_long and last_short < last_long:
         msg = f"🔴 {symbol} — EMA9 cắt xuống EMA21 → **Tín hiệu BÁN**"
         print(msg)
         await send_telegram_message(session, msg)
         return "SELL"
+
     return None
 
-# === Quét coin async ===
-async def scan_coins(session, coins):
-    tasks = [check_ema_crossover(session, s) for s in coins]
-    results = await asyncio.gather(*tasks)
-    buy_signals = results.count("BUY")
-    sell_signals = results.count("SELL")
-    return buy_signals, sell_signals
-
-# === Hàm chính quét coin ===
+# === Hàm chính quét coin async ===
 async def main_loop():
     async with aiohttp.ClientSession() as session:
         await send_telegram_message(session, "🚀 Bot EMA 9/21 đã khởi động và bắt đầu quét coin!")
 
         while True:
             try:
+                # Lấy danh sách coin
                 async with session.get("https://api.binance.com/api/v3/exchangeInfo") as resp:
                     exchange_info = await resp.json()
                 all_coins = [
@@ -95,17 +91,23 @@ async def main_loop():
 
                 print(f"\n🔍 Quét {len(all_coins)} coin... ({datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')})")
 
-                buy_signals, sell_signals = await scan_coins(session, all_coins)
+                tasks = [check_ema_crossover(session, symbol) for symbol in all_coins]
+                results = await asyncio.gather(*tasks)
+
+                buy_signals = results.count("BUY")
+                sell_signals = results.count("SELL")
 
                 summary = f"📊 **Tổng kết vòng quét**\n" \
                           f"🪙 Tổng coin quét: {len(all_coins)}\n" \
                           f"🟢 MUA: {buy_signals} | 🔴 BÁN: {sell_signals}\n" \
                           f"⏰ {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-
                 print(summary)
                 await send_telegram_message(session, summary)
 
-                print("✅ Hoàn tất vòng quét, nghỉ 60 giây...\n")
+                # Thông báo "quét xong"
+                await send_telegram_message(session, "✅ Đã quét xong vòng EMA!")
+
+                print("⏱ Nghỉ 60 giây trước vòng quét tiếp theo...\n")
                 await asyncio.sleep(60)
 
             except Exception as e:
@@ -115,11 +117,9 @@ async def main_loop():
 # === Flask giữ bot chạy trên Render ===
 @app.route('/')
 def home():
-    return "✅ EMA Bot async đang hoạt động ổn định!"
-
-def run_async_loop():
-    asyncio.run(main_loop())
+    return "✅ EMA Bot đang hoạt động ổn định!"
 
 if __name__ == '__main__':
-    threading.Thread(target=run_async_loop, daemon=True).start()
+    loop = asyncio.get_event_loop()
+    loop.create_task(main_loop())
     app.run(host='0.0.0.0', port=10000)
