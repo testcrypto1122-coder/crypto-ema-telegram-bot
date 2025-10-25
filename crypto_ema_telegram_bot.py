@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 import time
 import threading
-from flask import Flask
+from Flask import Flask
 
 # =============================
 # 🔧 CẤU HÌNH
@@ -114,3 +114,4 @@ if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     send_telegram_message("✅ Bot EMA 9/21 đã khởi động trên Render!")
     main()
+
