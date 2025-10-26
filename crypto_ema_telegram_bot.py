@@ -2,28 +2,29 @@ import asyncio
 import aiohttp
 import pandas as pd
 from datetime import datetime
+from aiohttp import web
 
 # =============================
-# Cấu hình
+# ⚙️ Cấu hình
 # =============================
 SETTINGS = {
-    "INTERVAL": "5m",
+    "INTERVAL": "5m",  # khoảng thời gian nến
     "EMA_SHORT": 9,
     "EMA_LONG": 21,
     "RSI_PERIOD": 14,
     "MACD_FAST": 12,
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
-    "MAX_COINS": 50,  # top coin
-    "SLEEP_BETWEEN_ROUNDS": 120,
+    "MAX_COINS": 50,  # top coin theo CoinStats
+    "SLEEP_BETWEEN_ROUNDS": 120,  # thời gian nghỉ giữa các vòng (giây)
     "CONCURRENT_REQUESTS": 10,
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
     "TELEGRAM_CHAT_ID": "8282016712",
-    "COINGECKO_API": "https://api.coingecko.com/api/v3",
+    "COINSTATS_API": "https://api.coinstats.app/public/v1",
 }
 
 # =============================
-# Telegram
+# 📨 Gửi thông báo Telegram
 # =============================
 async def send_telegram(session, text):
     url = f"https://api.telegram.org/bot{SETTINGS['TELEGRAM_BOT_TOKEN']}/sendMessage"
@@ -35,50 +36,53 @@ async def send_telegram(session, text):
         print("❌ Telegram error:", e)
 
 # =============================
-# Lấy danh sách top coin từ CoinGecko
+# 🪙 Lấy danh sách top coin
 # =============================
 async def get_top_coins(session):
-    url = f"{SETTINGS['COINGECKO_API']}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page={SETTINGS['MAX_COINS']}&page=1"
+    url = f"{SETTINGS['COINSTATS_API']}/coins?limit={SETTINGS['MAX_COINS']}"
     try:
         async with session.get(url, timeout=10) as resp:
             data = await resp.json()
-            return [coin["id"] for coin in data if "id" in coin]
+            return [coin["id"] for coin in data.get("coins", []) if "id" in coin]
     except Exception as e:
         print("⚠️ Lỗi lấy top coin:", e)
         return []
 
 # =============================
-# Lấy dữ liệu nến
+# 🕐 Lấy dữ liệu giá CoinStats
 # =============================
 async def get_klines(session, coin_id):
-    url = f"{SETTINGS['COINGECKO_API']}/coins/{coin_id}/market_chart?vs_currency=usd&days=1&interval={SETTINGS['INTERVAL']}"
+    # period = 5m, 15m, 1h, 4h, 1d
+    period_map = {"5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d"}
+    interval = period_map.get(SETTINGS["INTERVAL"], "5m")
+    url = f"{SETTINGS['COINSTATS_API']}/charts?period={interval}&coinId={coin_id}"
     try:
         async with session.get(url, timeout=10) as resp:
             data = await resp.json()
-            prices = data.get("prices", [])
+            prices = data.get("chart", [])
             if not prices:
                 return None
             df = pd.DataFrame(prices, columns=["time", "close"])
             df["close"] = df["close"].astype(float)
             return df
     except Exception as e:
-        print(f"⚠️ Lỗi API {coin_id.upper()}: {e}")
+        print(f"⚠️ Lỗi API {coin_id}: {e}")
         return None
 
 # =============================
-# Chỉ báo RSI
+# 📊 Tính RSI
 # =============================
 def calc_rsi(df, period):
     delta = df["close"].diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+    avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
 # =============================
-# Chỉ báo MACD
+# 📈 Tính MACD
 # =============================
 def calc_macd(df, fast, slow, signal):
     ema_fast = df["close"].ewm(span=fast, adjust=False).mean()
@@ -89,7 +93,7 @@ def calc_macd(df, fast, slow, signal):
     return macd_line, signal_line, hist
 
 # =============================
-# Kiểm tra tín hiệu
+# 🔎 Kiểm tra tín hiệu
 # =============================
 def check_signal(df):
     if df is None or len(df) < SETTINGS["EMA_LONG"]:
@@ -100,19 +104,21 @@ def check_signal(df):
     df["rsi"] = calc_rsi(df, SETTINGS["RSI_PERIOD"])
     macd_line, signal_line, _ = calc_macd(df, SETTINGS["MACD_FAST"], SETTINGS["MACD_SLOW"], SETTINGS["MACD_SIGNAL"])
 
-    ema_signal = None
+    ema_signal = macd_signal = rsi_signal = None
+
+    # EMA
     if df["ema_short"].iloc[-2] < df["ema_long"].iloc[-2] and df["ema_short"].iloc[-1] > df["ema_long"].iloc[-1]:
         ema_signal = "BUY"
     elif df["ema_short"].iloc[-2] > df["ema_long"].iloc[-2] and df["ema_short"].iloc[-1] < df["ema_long"].iloc[-1]:
         ema_signal = "SELL"
 
-    macd_signal = None
+    # MACD
     if macd_line.iloc[-2] < signal_line.iloc[-2] and macd_line.iloc[-1] > signal_line.iloc[-1]:
         macd_signal = "BUY"
     elif macd_line.iloc[-2] > signal_line.iloc[-2] and macd_line.iloc[-1] < signal_line.iloc[-1]:
         macd_signal = "SELL"
 
-    rsi_signal = None
+    # RSI
     last_rsi = df["rsi"].iloc[-1]
     if last_rsi < 30:
         rsi_signal = "BUY"
@@ -131,21 +137,19 @@ def check_signal(df):
         return "BUY", "⚡ yếu"
     elif count_sell == 2:
         return "SELL", "⚡ yếu"
-    else:
-        return None, None
+    return None, None
 
 # =============================
-# Quét coin
+# ⚙️ Quét coin
 # =============================
 async def scan_coin(session, coin_id, semaphore):
     async with semaphore:
         df = await get_klines(session, coin_id)
         signal, strength = check_signal(df)
-        print(f"{coin_id.upper()} → {signal} {strength}", flush=True)  # <--- thêm dòng này để xem console
         return coin_id, signal, strength
 
 # =============================
-# Main loop
+# 🧠 Main loop
 # =============================
 async def main():
     semaphore = asyncio.Semaphore(SETTINGS["CONCURRENT_REQUESTS"])
@@ -184,7 +188,7 @@ async def main():
                     total_sell += 1
 
             if new_signals:
-                msg = "📊 *Tín hiệu mới EMA+MACD+RSI render:*\n" + "\n".join(new_signals)
+                msg = "📊 *Tín hiệu mới EMA+MACD+RSI:*\n" + "\n".join(new_signals)
                 print(msg)
                 await send_telegram(session, msg)
 
@@ -195,12 +199,11 @@ async def main():
             await asyncio.sleep(SETTINGS["SLEEP_BETWEEN_ROUNDS"])
 
 # =============================
-# Chạy trên Render (Web Service)
+# 🌐 Giữ bot sống trên Render
 # =============================
 async def keep_alive():
-    from aiohttp import web
     async def handle(request):
-        return web.Response(text="Bot EMA+MACD+RSI đang chạy OK ✅")
+        return web.Response(text="✅ Bot EMA+MACD+RSI (CoinStats) đang chạy OK")
     app = web.Application()
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
@@ -212,5 +215,3 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(keep_alive())
     loop.run_until_complete(main())
-
-
