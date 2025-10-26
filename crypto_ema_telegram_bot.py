@@ -141,7 +141,7 @@ async def scan_coin(session, coin_id, semaphore):
     async with semaphore:
         df = await get_klines(session, coin_id)
         signal, strength = check_signal(df)
-        print(f"{coin_id.upper()} → {signal} {strength}")  # <--- thêm dòng này để xem console
+        print(f"{coin_id.upper()} → {signal} {strength}", flush=True)  # <--- thêm dòng này để xem console
         return coin_id, signal, strength
 
 # =============================
@@ -212,4 +212,5 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(keep_alive())
     loop.run_until_complete(main())
+
 
