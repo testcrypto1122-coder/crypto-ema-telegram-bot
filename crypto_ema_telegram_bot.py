@@ -2,6 +2,21 @@ import asyncio
 import aiohttp
 import pandas as pd
 from datetime import datetime
+import threading
+import http.server
+import socketserver
+
+# =============================
+# HTTP Keep-Alive Server (bắt buộc cho Render Free)
+# =============================
+def keep_alive():
+    PORT = 10000  # Render sẽ tự kiểm tra cổng này
+    handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", PORT), handler) as httpd:
+        print(f"✅ Keep-alive server chạy tại port {PORT}")
+        httpd.serve_forever()
+
+threading.Thread(target=keep_alive, daemon=True).start()
 
 # =============================
 # Cấu hình
@@ -15,8 +30,8 @@ SETTINGS = {
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
     "MAX_COINS": 20,  # top coin để giảm request
-    "SLEEP_BETWEEN_ROUNDS": 60,
-    "CONCURRENT_REQUESTS": 10,
+    "SLEEP_BETWEEN_ROUNDS": 60,  # 1 phút / vòng
+    "CONCURRENT_REQUESTS": 5,  # giảm tải CPU
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
     "TELEGRAM_CHAT_ID": "8282016712",
     "BINANCE_API_TIMEOUT": 10,
@@ -29,8 +44,8 @@ async def send_telegram(session, text):
     url = f"https://api.telegram.org/bot{SETTINGS['TELEGRAM_BOT_TOKEN']}/sendMessage"
     payload = {"chat_id": SETTINGS["TELEGRAM_CHAT_ID"], "text": text}
     try:
-        async with session.post(url, data=payload, timeout=10) as resp:
-            await resp.text()
+        async with session.post(url, data=payload, timeout=10):
+            pass
     except Exception as e:
         print("❌ Lỗi gửi Telegram:", e)
 
@@ -43,7 +58,7 @@ async def get_all_usdt_symbols(session):
             data = await resp.json()
         symbols = [
             s["symbol"] for s in data["symbols"]
-            if s["symbol"].endswith("USDT") and s["status"]=="TRADING"
+            if s["symbol"].endswith("USDT") and s["status"] == "TRADING"
             and not any(x in s["symbol"] for x in ["UP","DOWN","BULL","BEAR"])
         ]
         return symbols[:SETTINGS["MAX_COINS"]]
@@ -56,7 +71,7 @@ async def get_all_usdt_symbols(session):
 # =============================
 async def get_klines(session, symbol):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={SETTINGS['INTERVAL']}&limit=100"
-    for attempt in range(3):
+    for attempt in range(2):
         try:
             async with session.get(url, timeout=SETTINGS["BINANCE_API_TIMEOUT"]) as resp:
                 data = await resp.json()
@@ -106,30 +121,20 @@ def check_signal(df):
     df["ema_long"] = df["close"].ewm(span=SETTINGS["EMA_LONG"]).mean()
     prev_short, prev_long = df["ema_short"].iloc[-2], df["ema_long"].iloc[-2]
     last_short, last_long = df["ema_short"].iloc[-1], df["ema_long"].iloc[-1]
-    ema_signal = None
-    if prev_short < prev_long and last_short > last_long:
-        ema_signal = "BUY"
-    elif prev_short > prev_long and last_short < last_long:
-        ema_signal = "SELL"
+    ema_signal = "BUY" if prev_short < prev_long and last_short > last_long else (
+                 "SELL" if prev_short > prev_long and last_short < last_long else None)
 
     # MACD
     macd_line, signal_line, _ = calc_macd(df, SETTINGS["MACD_FAST"], SETTINGS["MACD_SLOW"], SETTINGS["MACD_SIGNAL"])
     prev_macd_diff = macd_line.iloc[-2] - signal_line.iloc[-2]
     last_macd_diff = macd_line.iloc[-1] - signal_line.iloc[-1]
-    macd_signal = None
-    if prev_macd_diff < 0 and last_macd_diff > 0:
-        macd_signal = "BUY"
-    elif prev_macd_diff > 0 and last_macd_diff < 0:
-        macd_signal = "SELL"
+    macd_signal = "BUY" if prev_macd_diff < 0 and last_macd_diff > 0 else (
+                  "SELL" if prev_macd_diff > 0 and last_macd_diff < 0 else None)
 
     # RSI
     df["rsi"] = calc_rsi(df, SETTINGS["RSI_PERIOD"])
     last_rsi = df["rsi"].iloc[-1]
-    rsi_signal = None
-    if last_rsi < 30:
-        rsi_signal = "BUY"
-    elif last_rsi > 70:
-        rsi_signal = "SELL"
+    rsi_signal = "BUY" if last_rsi < 30 else ("SELL" if last_rsi > 70 else None)
 
     # Đồng thuận
     signals = [s for s in [ema_signal, macd_signal, rsi_signal] if s]
@@ -194,11 +199,11 @@ async def main():
                 await send_telegram(session, msg)
 
             # Gửi tổng kết vòng quét
-            summary = f"📈 Tổng kết vòng quét: 🟢 MUA {total_buy} | 🔴 BÁN {total_sell} | ⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            summary = f"📈 Tổng kết: 🟢 MUA {total_buy} | 🔴 BÁN {total_sell} | ⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             print(summary)
             await send_telegram(session, summary)
 
-            print(f"⏳ Nghỉ {SETTINGS['SLEEP_BETWEEN_ROUNDS']} giây trước vòng quét tiếp theo...\n")
+            print(f"⏳ Nghỉ {SETTINGS['SLEEP_BETWEEN_ROUNDS']}s trước vòng quét tiếp theo...\n")
             await asyncio.sleep(SETTINGS["SLEEP_BETWEEN_ROUNDS"])
 
 # =============================
