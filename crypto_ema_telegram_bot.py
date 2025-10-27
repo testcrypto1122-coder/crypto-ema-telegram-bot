@@ -15,10 +15,10 @@ SETTINGS = {
     "MACD_FAST": 12,
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
-    "MAX_COINS": 50,  # top coin
+    "MAX_COINS": 50,
     "SLEEP_BETWEEN_ROUNDS": 120,
     "CONCURRENT_REQUESTS": 10,
-    "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
+    "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0", 
     "TELEGRAM_CHAT_ID": "8282016712",
     "COINGECKO_API": "https://api.coingecko.com/api/v3",
 }
@@ -147,14 +147,16 @@ async def scan_coin(session, coin_id, semaphore):
         return coin_id, signal, strength
 
 # =============================
-# VÒNG LẶP CHÍNH
+# MAIN LOOP
 # =============================
-async def main_loop(session):
+async def main_loop():
     semaphore = asyncio.Semaphore(SETTINGS["CONCURRENT_REQUESTS"])
     last_signals = {}
 
-    while True:
-        try:
+    async with aiohttp.ClientSession() as session:
+        await send_telegram(session, f"🚀 Bot EMA+MACD+RSI khởi động — quét top {SETTINGS['MAX_COINS']} coin ({SETTINGS['INTERVAL']})")
+
+        while True:
             coins = await get_top_coins(session)
             if not coins:
                 print("⚠️ Không lấy được danh sách coin, thử lại sau.")
@@ -190,11 +192,7 @@ async def main_loop(session):
             summary = f"📈 Tổng kết: 🟢 MUA {total_buy} | 🔴 BÁN {total_sell} | ⏰ {datetime.now().strftime('%H:%M:%S')}"
             print(summary)
             await send_telegram(session, summary)
-
             await asyncio.sleep(SETTINGS["SLEEP_BETWEEN_ROUNDS"])
-        except Exception as e:
-            print("❌ Lỗi vòng quét:", e)
-            await asyncio.sleep(10)
 
 # =============================
 # KEEP-ALIVE WEB SERVICE
@@ -212,20 +210,12 @@ async def keep_alive():
 # =============================
 # ENTRY POINT
 # =============================
-async def main():
-    async with aiohttp.ClientSession() as session:
-        await send_telegram(session, f"🚀 Bot EMA+MACD+RSI khởi động — quét top {SETTINGS['MAX_COINS']} coin")
-        await asyncio.gather(
-            main_loop(session),
-            keep_alive()
-        )
-
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
-    # Chạy web service và bot cùng lúc
     loop.create_task(keep_alive())
     try:
-        loop.run_until_complete(main())  # main() là vòng while True
+        loop.run_until_complete(main_loop())
     except KeyboardInterrupt:
-        print("⚠️ Bot dừng thủ công")
-
+        pass
+    finally:
+        loop.close()
