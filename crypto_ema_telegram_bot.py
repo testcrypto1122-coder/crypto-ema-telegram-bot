@@ -2,6 +2,7 @@ import asyncio
 import aiohttp
 import pandas as pd
 from datetime import datetime
+from aiohttp import web
 
 # =============================
 # CẤU HÌNH
@@ -14,7 +15,7 @@ SETTINGS = {
     "MACD_FAST": 12,
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
-    "MAX_COINS": 50,
+    "MAX_COINS": 50,  # top coin
     "SLEEP_BETWEEN_ROUNDS": 120,
     "CONCURRENT_REQUESTS": 10,
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
@@ -107,16 +108,19 @@ def check_signal(df):
 
     ema_signal = macd_signal = rsi_signal = None
 
+    # EMA crossover
     if df["ema_short"].iloc[-2] < df["ema_long"].iloc[-2] and df["ema_short"].iloc[-1] > df["ema_long"].iloc[-1]:
         ema_signal = "BUY"
     elif df["ema_short"].iloc[-2] > df["ema_long"].iloc[-2] and df["ema_short"].iloc[-1] < df["ema_long"].iloc[-1]:
         ema_signal = "SELL"
 
+    # MACD crossover
     if macd_line.iloc[-2] < signal_line.iloc[-2] and macd_line.iloc[-1] > signal_line.iloc[-1]:
         macd_signal = "BUY"
     elif macd_line.iloc[-2] > signal_line.iloc[-2] and macd_line.iloc[-1] < signal_line.iloc[-1]:
         macd_signal = "SELL"
 
+    # RSI
     last_rsi = df["rsi"].iloc[-1]
     if last_rsi < 30:
         rsi_signal = "BUY"
@@ -143,16 +147,14 @@ async def scan_coin(session, coin_id, semaphore):
         return coin_id, signal, strength
 
 # =============================
-# MAIN LOOP
+# VÒNG LẶP CHÍNH
 # =============================
-async def main():
+async def main_loop(session):
     semaphore = asyncio.Semaphore(SETTINGS["CONCURRENT_REQUESTS"])
     last_signals = {}
 
-    async with aiohttp.ClientSession() as session:
-        await send_telegram(session, f"🚀 Bot EMA+MACD+RSI khởi động — quét top {SETTINGS['MAX_COINS']} coin ({SETTINGS['INTERVAL']})")
-
-        while True:
+    while True:
+        try:
             coins = await get_top_coins(session)
             if not coins:
                 print("⚠️ Không lấy được danh sách coin, thử lại sau.")
@@ -190,14 +192,16 @@ async def main():
             await send_telegram(session, summary)
 
             await asyncio.sleep(SETTINGS["SLEEP_BETWEEN_ROUNDS"])
+        except Exception as e:
+            print("❌ Lỗi vòng quét:", e)
+            await asyncio.sleep(10)
 
 # =============================
 # KEEP-ALIVE WEB SERVICE
 # =============================
 async def keep_alive():
-    from aiohttp import web
     async def handle(request):
-        return web.Response(text="✅ Bot EMA+MACD+RSI đang chạy ổn định trên Fly.io!")
+        return web.Response(text="✅ Bot EMA+MACD+RSI đang chạy trên Fly.io!")
     app = web.Application()
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
@@ -205,7 +209,16 @@ async def keep_alive():
     site = web.TCPSite(runner, "0.0.0.0", 8080)
     await site.start()
 
+# =============================
+# ENTRY POINT
+# =============================
+async def main():
+    async with aiohttp.ClientSession() as session:
+        await send_telegram(session, f"🚀 Bot EMA+MACD+RSI khởi động — quét top {SETTINGS['MAX_COINS']} coin")
+        await asyncio.gather(
+            main_loop(session),
+            keep_alive()
+        )
+
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(keep_alive())
-    loop.run_until_complete(main())
+    asyncio.run(main())
