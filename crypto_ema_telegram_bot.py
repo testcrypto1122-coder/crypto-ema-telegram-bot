@@ -14,14 +14,13 @@ SETTINGS = {
     "MACD_FAST": 12,
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
-    "MAX_COINS": 50,  # top coin
+    "MAX_COINS": 50,
     "SLEEP_BETWEEN_ROUNDS": 120,
     "CONCURRENT_REQUESTS": 10,
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
     "TELEGRAM_CHAT_ID": "8282016712",
     "COINGECKO_API": "https://api.coingecko.com/api/v3",
 }
-
 
 # =============================
 # TELEGRAM
@@ -34,7 +33,6 @@ async def send_telegram(session, text):
             pass
     except Exception as e:
         print("❌ Telegram error:", e)
-
 
 # =============================
 # LẤY DANH SÁCH TOP COIN
@@ -51,7 +49,6 @@ async def get_top_coins(session):
             print(f"⚠️ Không lấy được danh sách coin (attempt {attempt+1}):", e)
             await asyncio.sleep(2)
     return []
-
 
 # =============================
 # LẤY DỮ LIỆU NẾN
@@ -73,7 +70,6 @@ async def get_klines(session, coin_id):
         print(f"⚠️ Lỗi API {coin_id.upper()}: {e}")
         return None
 
-
 # =============================
 # CHỈ BÁO RSI
 # =============================
@@ -86,7 +82,6 @@ def calc_rsi(df, period):
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
-
 # =============================
 # CHỈ BÁO MACD
 # =============================
@@ -97,7 +92,6 @@ def calc_macd(df, fast, slow, signal):
     signal_line = macd_line.ewm(span=signal, adjust=False).mean()
     hist = macd_line - signal_line
     return macd_line, signal_line, hist
-
 
 # =============================
 # KIỂM TRA TÍN HIỆU
@@ -113,19 +107,16 @@ def check_signal(df):
 
     ema_signal = macd_signal = rsi_signal = None
 
-    # EMA crossover
     if df["ema_short"].iloc[-2] < df["ema_long"].iloc[-2] and df["ema_short"].iloc[-1] > df["ema_long"].iloc[-1]:
         ema_signal = "BUY"
     elif df["ema_short"].iloc[-2] > df["ema_long"].iloc[-2] and df["ema_short"].iloc[-1] < df["ema_long"].iloc[-1]:
         ema_signal = "SELL"
 
-    # MACD crossover
     if macd_line.iloc[-2] < signal_line.iloc[-2] and macd_line.iloc[-1] > signal_line.iloc[-1]:
         macd_signal = "BUY"
     elif macd_line.iloc[-2] > signal_line.iloc[-2] and macd_line.iloc[-1] < signal_line.iloc[-1]:
         macd_signal = "SELL"
 
-    # RSI
     last_rsi = df["rsi"].iloc[-1]
     if last_rsi < 30:
         rsi_signal = "BUY"
@@ -142,7 +133,6 @@ def check_signal(df):
         return "SELL", "⚡ xác suất cao"
     return None, None
 
-
 # =============================
 # QUÉT COIN
 # =============================
@@ -151,7 +141,6 @@ async def scan_coin(session, coin_id, semaphore):
         df = await get_klines(session, coin_id)
         signal, strength = check_signal(df)
         return coin_id, signal, strength
-
 
 # =============================
 # MAIN LOOP
@@ -202,14 +191,13 @@ async def main():
 
             await asyncio.sleep(SETTINGS["SLEEP_BETWEEN_ROUNDS"])
 
-
 # =============================
 # KEEP-ALIVE WEB SERVICE
 # =============================
 async def keep_alive():
     from aiohttp import web
     async def handle(request):
-        return web.Response(text="✅ Bot EMA+MACD+RSI đang chạy trên Render!")
+        return web.Response(text="✅ Bot EMA+MACD+RSI đang chạy ổn định trên Fly.io!")
     app = web.Application()
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
@@ -217,9 +205,7 @@ async def keep_alive():
     site = web.TCPSite(runner, "0.0.0.0", 8080)
     await site.start()
 
-
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(keep_alive())
     loop.run_until_complete(main())
-
