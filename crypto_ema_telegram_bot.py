@@ -221,4 +221,11 @@ async def main():
         )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    loop = asyncio.get_event_loop()
+    # Chạy web service và bot cùng lúc
+    loop.create_task(keep_alive())
+    try:
+        loop.run_until_complete(main())  # main() là vòng while True
+    except KeyboardInterrupt:
+        print("⚠️ Bot dừng thủ công")
+
