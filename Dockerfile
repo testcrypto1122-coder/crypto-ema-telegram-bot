@@ -1,10 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
 
 WORKDIR /app
-COPY . /app
 
-RUN pip install --no-cache-dir aiohttp pandas
+COPY . .
 
-EXPOSE 8080
+RUN pip install --no-cache-dir -r requirements.txt
 
 CMD ["python", "crypto_ema_telegram_bot.py"]
