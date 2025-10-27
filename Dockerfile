@@ -1,19 +1,17 @@
-# Base image Python 3.11
+# Sử dụng Python chính thức
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
-# Copy files
+# Copy toàn bộ source code
 COPY . /app
 
 # Cài dependencies
 RUN pip install --no-cache-dir --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port cho Fly.io Web Service
+# Expose port Fly.io yêu cầu
 EXPOSE 8080
 
-# Chạy bot
+# Chạy ứng dụng
 CMD ["python", "crypto_ema_telegram_bot.py"]
-
