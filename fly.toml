@@ -1,11 +1,12 @@
 app = "crypto-ema-telegram-bot"
+primary_region = "iad"
 
 [build]
-  image = "registry.fly.io/crypto-ema-telegram-bot"
+  builder = "heroku/buildpacks:python"
 
-[http_service]
+[[services]]
   internal_port = 8080
-  force_https = true
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
+  protocol = "tcp"
+  [services.ports]
+    http = 8080
+
