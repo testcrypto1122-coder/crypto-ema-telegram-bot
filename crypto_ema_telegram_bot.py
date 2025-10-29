@@ -8,17 +8,18 @@ from aiohttp import web
 # Cấu hình
 # ==============================
 SETTINGS = {
-    "INTERVAL": "1m",
+    "INTERVAL": "1m",  # thời gian quét nhanh để test
     "EMA_SHORT": 9,
     "EMA_LONG": 21,
     "RSI_PERIOD": 14,
     "MACD_FAST": 12,
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
-    "CONCURRENT_REQUESTS": 15,
+    "CONCURRENT_REQUESTS": 10,  # giảm số coin quét đồng thời để test
     "SLEEP_BETWEEN_ROUNDS": 60,
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
     "TELEGRAM_CHAT_ID": "8282016712",
+    "MIN_SIGNALS_TO_ALERT": 1,  # tín hiệu >=1 sẽ gửi Telegram
 }
 
 # ==============================
@@ -46,8 +47,9 @@ async def get_all_symbols(session):
             if s["symbol"].endswith("USDT") and s["status"]=="TRADING"
             and not any(x in s["symbol"] for x in ["UP","DOWN","BULL","BEAR"])
         ]
-        return symbols
-    except:
+        return symbols[:20]  # test chỉ top 20 coin để nhanh thấy kết quả
+    except Exception as e:
+        print("⚠️ Lỗi lấy danh sách coin:", e)
         return []
 
 # ==============================
@@ -64,7 +66,8 @@ async def get_klines(session, symbol):
             ])
             df["close"] = df["close"].astype(float)
             return df
-    except:
+    except Exception as e:
+        print(f"⚠️ Lỗi lấy dữ liệu {symbol}: {e}")
         return None
 
 # ==============================
@@ -119,9 +122,9 @@ def check_signal(df):
         rsi_signal = "SELL"
 
     signals = [s for s in [ema_signal, macd_signal, rsi_signal] if s]
-    if signals.count("BUY") >= 1:
+    if signals.count("BUY") >= SETTINGS["MIN_SIGNALS_TO_ALERT"]:
         return "BUY"
-    elif signals.count("SELL") >= 1:
+    elif signals.count("SELL") >= SETTINGS["MIN_SIGNALS_TO_ALERT"]:
         return "SELL"
     return None
 
@@ -132,6 +135,7 @@ async def scan_coin(session, symbol, semaphore):
     async with semaphore:
         df = await get_klines(session, symbol)
         signal = check_signal(df)
+        print(f"{symbol}: signal={signal}")  # debug console
         return symbol, signal
 
 # ==============================
@@ -206,4 +210,3 @@ if __name__ == "__main__":
         asyncio.run(start_all())
     except KeyboardInterrupt:
         print("🛑 Bot dừng bằng tay")
-
