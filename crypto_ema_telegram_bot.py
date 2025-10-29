@@ -2,80 +2,74 @@ import asyncio
 import aiohttp
 import pandas as pd
 from datetime import datetime
+from aiohttp import web
 
-# =============================
-# CẤU HÌNH
-# =============================
+# ==============================
+# Cấu hình
+# ==============================
 SETTINGS = {
-    "INTERVAL": "5m", 
+    "INTERVAL": "5m",
     "EMA_SHORT": 9,
     "EMA_LONG": 21,
     "RSI_PERIOD": 14,
     "MACD_FAST": 12,
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
-    "CONCURRENT_REQUESTS": 15,  # số coin quét đồng thời
-    "SLEEP_BETWEEN_ROUNDS": 60, # giây giữa các vòng quét
+    "CONCURRENT_REQUESTS": 15,
+    "SLEEP_BETWEEN_ROUNDS": 60,
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
     "TELEGRAM_CHAT_ID": "8282016712",
 }
 
-# =============================
+# ==============================
 # Gửi Telegram
-# =============================
+# ==============================
 async def send_telegram(session, text):
     url = f"https://api.telegram.org/bot{SETTINGS['TELEGRAM_BOT_TOKEN']}/sendMessage"
-    payload = {"chat_id": SETTINGS["TELEGRAM_CHAT_ID"], "text": text, "parse_mode":"Markdown"}
+    payload = {"chat_id": SETTINGS["TELEGRAM_CHAT_ID"], "text": text, "parse_mode": "Markdown"}
     try:
         async with session.post(url, json=payload, timeout=10):
             pass
     except Exception as e:
         print("❌ Lỗi Telegram:", e)
 
-# =============================
+# ==============================
 # Lấy danh sách coin USDT
-# =============================
+# ==============================
 async def get_all_symbols(session):
     url = "https://api.binance.com/api/v3/exchangeInfo"
-    for attempt in range(3):
-        try:
-            async with session.get(url, timeout=10) as resp:
-                data = await resp.json()
-                symbols = [
-                    s["symbol"] for s in data["symbols"]
-                    if s["symbol"].endswith("USDT") and s["status"]=="TRADING"
-                    and not any(x in s["symbol"] for x in ["UP","DOWN","BULL","BEAR"])
-                ]
-                print(f"✅ Tìm thấy {len(symbols)} coin USDT.")
-                return symbols
-        except Exception as e:
-            print(f"⚠️ Lỗi lấy danh sách coin (attempt {attempt+1}): {e}")
-            await asyncio.sleep(2)
-    return []
+    try:
+        async with session.get(url, timeout=10) as resp:
+            data = await resp.json()
+        symbols = [
+            s["symbol"] for s in data["symbols"]
+            if s["symbol"].endswith("USDT") and s["status"]=="TRADING"
+            and not any(x in s["symbol"] for x in ["UP","DOWN","BULL","BEAR"])
+        ]
+        return symbols
+    except:
+        return []
 
-# =============================
-# Lấy dữ liệu nến Binance
-# =============================
+# ==============================
+# Lấy dữ liệu nến
+# ==============================
 async def get_klines(session, symbol):
     url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={SETTINGS['INTERVAL']}&limit=100"
-    for attempt in range(3):
-        try:
-            async with session.get(url, timeout=10) as resp:
-                data = await resp.json()
-                df = pd.DataFrame(data, columns=[
-                    "time","open","high","low","close","volume",
-                    "close_time","qav","trades","tbbav","tbqav","ignore"
-                ])
-                df["close"] = df["close"].astype(float)
-                return df
-        except Exception as e:
-            print(f"⚠️ Lỗi {symbol} attempt {attempt+1}: {e}")
-            await asyncio.sleep(1)
-    return None
+    try:
+        async with session.get(url, timeout=10) as resp:
+            data = await resp.json()
+            df = pd.DataFrame(data, columns=[
+                "time","open","high","low","close","volume",
+                "close_time","qav","trades","tbbav","tbqav","ignore"
+            ])
+            df["close"] = df["close"].astype(float)
+            return df
+    except:
+        return None
 
-# =============================
+# ==============================
 # Tính RSI
-# =============================
+# ==============================
 def calc_rsi(df, period):
     delta = df["close"].diff()
     up = delta.clip(lower=0)
@@ -84,9 +78,9 @@ def calc_rsi(df, period):
     ma_down = down.ewm(com=period-1, adjust=False).mean()
     return 100 - 100/(1 + ma_up/ma_down)
 
-# =============================
+# ==============================
 # Tính MACD
-# =============================
+# ==============================
 def calc_macd(df, fast, slow, signal):
     ema_fast = df["close"].ewm(span=fast).mean()
     ema_slow = df["close"].ewm(span=slow).mean()
@@ -95,9 +89,9 @@ def calc_macd(df, fast, slow, signal):
     hist = macd_line - signal_line
     return macd_line, signal_line, hist
 
-# =============================
+# ==============================
 # Kiểm tra tín hiệu
-# =============================
+# ==============================
 def check_signal(df):
     if df is None or len(df) < max(SETTINGS["EMA_LONG"], SETTINGS["RSI_PERIOD"], SETTINGS["MACD_SLOW"]):
         return None
@@ -131,24 +125,24 @@ def check_signal(df):
         return "SELL"
     return None
 
-# =============================
-# Quét coin
-# =============================
+# ==============================
+# Scan 1 coin
+# ==============================
 async def scan_coin(session, symbol, semaphore):
     async with semaphore:
         df = await get_klines(session, symbol)
         signal = check_signal(df)
         return symbol, signal
 
-# =============================
+# ==============================
 # Vòng quét chính
-# =============================
+# ==============================
 async def main():
     semaphore = asyncio.Semaphore(SETTINGS["CONCURRENT_REQUESTS"])
     last_signals = {}
 
     async with aiohttp.ClientSession() as session:
-        await send_telegram(session, "🚀 Bot EMA+MACD+RSI khởi động!")
+        await send_telegram(session, f"🚀 Bot EMA+MACD+RSI đã khởi động!")
 
         while True:
             symbols = await get_all_symbols(session)
@@ -169,44 +163,46 @@ async def main():
                     if signal and signal != prev_signal:
                         new_signals.append(f"{symbol} → {signal}")
                         last_signals[symbol] = signal
-                    if signal == "BUY": total_buy += 1
-                    elif signal == "SELL": total_sell += 1
-                else:
-                    print("⚠️ Lỗi scan coin:", res)
+                    if signal == "BUY":
+                        total_buy += 1
+                    elif signal == "SELL":
+                        total_sell += 1
 
-            # Gửi Telegram chỉ khi có tín hiệu mới
+            # Chỉ gửi Telegram nếu có tín hiệu mới
             if new_signals:
-                msg = "📊 *Tín hiệu mới phát hiện:*\n" + "\n".join([f"• {s}" for s in new_signals])
-                await send_telegram(session, msg)
+                await send_telegram(session, "📊 Tín hiệu mới:\n" + "\n".join(new_signals))
 
-            # Gửi summary vòng quét
-            summary = f"📈 *Tổng kết vòng quét:*\n🟢 MUA: {total_buy} | 🔴 BÁN: {total_sell}\n⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            summary = f"📈 Tổng kết vòng quét: 🟢 MUA {total_buy} | 🔴 BÁN {total_sell} | ⏰ {datetime.now().strftime('%H:%M:%S')}"
             print(summary)
             await send_telegram(session, summary)
 
             await asyncio.sleep(SETTINGS["SLEEP_BETWEEN_ROUNDS"])
 
-# =============================
-# Keep-alive web server Fly.io
-# =============================
+# ==============================
+# Web server keep-alive Fly.io
+# ==============================
 async def keep_alive():
-    from aiohttp import web
     async def handle(request):
         return web.Response(text="✅ Bot đang chạy")
     app = web.Application()
     app.add_routes([web.get("/", handle)])
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
     await site.start()
     while True:
         await asyncio.sleep(3600)
 
-# =============================
-# Chạy bot
-# =============================
+# ==============================
+# Chạy song song main + web server
+# ==============================
+async def start_all():
+    task1 = asyncio.create_task(main())
+    task2 = asyncio.create_task(keep_alive())
+    await asyncio.gather(task1, task2)
+
 if __name__ == "__main__":
     try:
-        asyncio.run(asyncio.gather(main(), keep_alive()))
+        asyncio.run(start_all())
     except KeyboardInterrupt:
         print("🛑 Bot dừng bằng tay")
