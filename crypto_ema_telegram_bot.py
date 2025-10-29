@@ -16,7 +16,7 @@ SETTINGS = {
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
     "CONCURRENT_REQUESTS": 10,  # giảm số coin quét đồng thời để test
-    "SLEEP_BETWEEN_ROUNDS": 60,
+    "SLEEP_BETWEEN_ROUNDS": 5,
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
     "TELEGRAM_CHAT_ID": "8282016712",
     "MIN_SIGNALS_TO_ALERT": 1,  # tín hiệu >=1 sẽ gửi Telegram
@@ -135,7 +135,7 @@ async def scan_coin(session, symbol, semaphore):
     async with semaphore:
         df = await get_klines(session, symbol)
         signal = check_signal(df)
-        print(f"{symbol}: signal={signal}")  # debug console
+        print(f"Debug: {symbol}: signal={signal}")  # debug console
         return symbol, signal
 
 # ==============================
@@ -210,3 +210,4 @@ if __name__ == "__main__":
         asyncio.run(start_all())
     except KeyboardInterrupt:
         print("🛑 Bot dừng bằng tay")
+
