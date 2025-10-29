@@ -8,7 +8,7 @@ from aiohttp import web
 # Cấu hình
 # ==============================
 SETTINGS = {
-    "INTERVAL": "5m",
+    "INTERVAL": "1m",
     "EMA_SHORT": 9,
     "EMA_LONG": 21,
     "RSI_PERIOD": 14,
@@ -119,9 +119,9 @@ def check_signal(df):
         rsi_signal = "SELL"
 
     signals = [s for s in [ema_signal, macd_signal, rsi_signal] if s]
-    if signals.count("BUY") >= 2:
+    if signals.count("BUY") >= 1:
         return "BUY"
-    elif signals.count("SELL") >= 2:
+    elif signals.count("SELL") >= 1:
         return "SELL"
     return None
 
@@ -206,3 +206,4 @@ if __name__ == "__main__":
         asyncio.run(start_all())
     except KeyboardInterrupt:
         print("🛑 Bot dừng bằng tay")
+
