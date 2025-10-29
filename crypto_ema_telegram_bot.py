@@ -2,6 +2,8 @@ import asyncio
 import aiohttp
 import pandas as pd
 from datetime import datetime
+import os
+from aiohttp import web
 
 # =============================
 # ⚙️ CẤU HÌNH
@@ -15,13 +17,13 @@ SETTINGS = {
     "MACD_SLOW": 26,
     "MACD_SIGNAL": 9,
     "CONCURRENT_REQUESTS": 10,   # số coin quét đồng thời
-    "SLEEP_BETWEEN_ROUNDS": 60,  # thời gian nghỉ giữa các vòng quét
+    "SLEEP_BETWEEN_ROUNDS": 60,  # giây giữa các vòng quét
     "TELEGRAM_BOT_TOKEN": "8264206004:AAH2zvVURgKLv9hZd-ZKTrB7xcZsaKZCjd0",
     "TELEGRAM_CHAT_ID": "8282016712",
 }
 
 # =============================
-# 📩 Gửi tin nhắn Telegram
+# 📩 Gửi Telegram
 # =============================
 async def send_telegram(session, text):
     url = f"https://api.telegram.org/bot{SETTINGS['TELEGRAM_BOT_TOKEN']}/sendMessage"
@@ -216,20 +218,20 @@ async def main():
 # 🌐 Web keep-alive cho Fly.io
 # =============================
 async def keep_alive():
-    from aiohttp import web
     async def handle(request):
         return web.Response(text="✅ Bot đang chạy!")
     app = web.Application()
     app.router.add_get("/", handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     while True:
         await asyncio.sleep(3600)
 
 # =============================
-# ▶️ Chạy song song bot + web
+# 🚀 Chạy bot
 # =============================
 if __name__ == "__main__":
     try:
