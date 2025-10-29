@@ -1,42 +1,17 @@
-# =============================
-# fly.toml - Cấu hình Fly.io cho bot EMA+MACD+RSI
-# =============================
+app = "crypto-ema-telegram-bot"
+primary_region = "iad"
 
-app = "crypto-ema-telegram-bot"  # tên app trên Fly.io
-primary_region = "iad"            # region gần bạn hoặc nơi muốn chạy
-
-# =============================
-# Build settings
-# Nếu bạn có Dockerfile thì Fly sẽ build theo Dockerfile
-# Nếu không, Fly tự build Python app theo requirements.txt
-# =============================
 [build]
-  dockerfile = "Dockerfile"  # bỏ dòng này nếu không dùng Dockerfile
+  dockerfile = "Dockerfile"
 
-# =============================
-# Dịch vụ web
-# =============================
 [[services]]
   internal_port = 8080
   protocol = "tcp"
-
-  # Public port trên Fly.io
   [[services.ports]]
-    port = 80
+    port = 8080
     handlers = ["http"]
 
-  [[services.ports]]
-    port = 443
-    handlers = ["tls", "http"]
-
-  # Concurrency
   [services.concurrency]
     type = "connections"
-    soft_limit = 50
-    hard_limit = 100
-
-# =============================
-# Biến môi trường
-# =============================
-[env]
-  PORT = "8080"  # port để web keep-alive listen
+    soft_limit = 25
+    hard_limit = 50
