@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import os
 from aiohttp import web
+import threading
 
 # =============================
 # ⚙️ CẤU HÌNH
@@ -170,7 +171,7 @@ async def main():
             await asyncio.sleep(SETTINGS["SLEEP_BETWEEN_ROUNDS"])
 
 # =============================
-# 🌐 Web keep-alive Fly.io
+# 🌐 Web keep-alive Fly.io (thread riêng)
 # =============================
 async def keep_alive():
     async def handle(request):
@@ -182,14 +183,21 @@ async def keep_alive():
     port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
+    print(f"✅ Web server listening on 0.0.0.0:{port}")
     while True:
         await asyncio.sleep(3600)
+
+def run_web_server():
+    asyncio.run(keep_alive())
 
 # =============================
 # 🚀 Chạy bot
 # =============================
 if __name__ == "__main__":
+    # start web server thread trước
+    threading.Thread(target=run_web_server, daemon=True).start()
+    # chạy bot chính
     try:
-        asyncio.run(asyncio.gather(main(), keep_alive()))
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("🛑 Bot dừng bằng tay")
