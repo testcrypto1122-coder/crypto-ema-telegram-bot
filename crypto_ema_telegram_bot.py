@@ -10,7 +10,7 @@ import threading
 # ⚙️ CẤU HÌNH
 # =============================
 SETTINGS = {
-    "INTERVAL": "15m",
+    "INTERVAL": "5m",
     "EMA_SHORT": 9,
     "EMA_LONG": 21,
     "RSI_PERIOD": 14,
@@ -201,3 +201,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("🛑 Bot dừng bằng tay")
+
